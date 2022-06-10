@@ -5,20 +5,16 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/stmcginnis/gofish/redfish"
 )
 
-func resourceRedfishEthernetInterface() *schema.Resource {
+func dataSourceRedfishEthernetInterface() *schema.Resource {
 	return &schema.Resource{
-		CreateContext: resourceRedfishEthernetInterfaceCreate,
-		ReadContext:   resourceRedfishEthernetInterfaceRead,
-		UpdateContext: resourceRedfishEthernetInterfaceUpdate,
-		DeleteContext: resourceRedfishEthernetInterfaceDelete,
-		Schema:        getResourceRedfishEthernetInterfaceSchema(),
+		ReadContext: dataSourceRedfishEthernetInterfaceRead,
+		Schema:      getDataSourceRedfishEthernetInterfaceSchema(),
 	}
 }
 
-func getResourceRedfishEthernetInterfaceSchema() map[string]*schema.Schema {
+func getDataSourceRedfishEthernetInterfaceSchema() map[string]*schema.Schema {
 	return map[string]*schema.Schema{
 		"redfish_server": {
 			Type:        schema.TypeList,
@@ -100,35 +96,10 @@ func getResourceRedfishEthernetInterfaceSchema() map[string]*schema.Schema {
 	}
 }
 
-func resourceRedfishEthernetInterfaceCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func dataSourceRedfishEthernetInterfaceRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	service, err := NewConfig(m.(*schema.ResourceData), d)
 	if err != nil {
 		return diag.Errorf(err.Error())
-	}
-
-	// Lock the mutex to avoid race conditions with other resources
-	redfishMutexKV.Lock(getRedfishServerEndpoint(d))
-	defer redfishMutexKV.Unlock(getRedfishServerEndpoint(d))
-
-	// Get terraform schema data
-	var dhcpEnabled, useDnsServers, useDomainName, useGateway, useNTPServers, useStaticRoutes bool
-	if v, ok := d.GetOk("dhcp_enabled"); ok {
-		dhcpEnabled = v.(bool)
-	}
-	if v, ok := d.GetOk("use_dns_servers"); ok {
-		useDnsServers = v.(bool)
-	}
-	if v, ok := d.GetOk("use_domain_name"); ok {
-		useDomainName = v.(bool)
-	}
-	if v, ok := d.GetOk("use_gateway"); ok {
-		useGateway = v.(bool)
-	}
-	if v, ok := d.GetOk("use_ntp_servers"); ok {
-		useNTPServers = v.(bool)
-	}
-	if v, ok := d.GetOk("use_static_routes"); ok {
-		useStaticRoutes = v.(bool)
 	}
 
 	// Get manager id and ethernet interface id from schema
@@ -160,34 +131,7 @@ func resourceRedfishEthernetInterfaceCreate(ctx context.Context, d *schema.Resou
 		return diag.Errorf("Ethernet Interface selected doesn't exist: %s", err)
 	}
 
-	dhcpv4Configuration := redfish.DHCPv4Configuration{
-		DHCPEnabled:     dhcpEnabled,
-		UseDNSServers:   useDnsServers,
-		UseDomainName:   useDomainName,
-		UseGateway:      useGateway,
-		UseNTPServers:   useNTPServers,
-		UseStaticRoutes: useStaticRoutes,
-	}
-
-	ethernetInterface.DHCPv4 = dhcpv4Configuration
-	if err != nil {
-		return diag.Errorf("Couldn't update Ethernet Interface: %s", err)
-	}
-
 	d.SetId(ethernetInterface.ODataID)
-	return resourceRedfishEthernetInterfaceRead(ctx, d, m)
-}
-
-func resourceRedfishEthernetInterfaceRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	service, err := NewConfig(m.(*schema.ResourceData), d)
-	if err != nil {
-		return diag.Errorf(err.Error())
-	}
-
-	ethernetInterface, err := redfish.GetEthernetInterface(service.Client, d.Id())
-	if err != nil {
-		return diag.Errorf("Ethernet Interface doesn't exist: %s", err) //This error won't be triggered ever
-	}
 
 	// Set terraform schema data
 	if err := d.Set("dhcp_enabled", ethernetInterface.DHCPv4.DHCPEnabled); err != nil {
@@ -213,66 +157,6 @@ func resourceRedfishEthernetInterfaceRead(ctx context.Context, d *schema.Resourc
 	if err := d.Set("use_static_routes", ethernetInterface.DHCPv4.UseStaticRoutes); err != nil {
 		return diag.Errorf("[CUSTOM] error setting %s: %v\n", "use_static_routes", err)
 	}
-
-	return nil
-}
-
-func resourceRedfishEthernetInterfaceUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	service, err := NewConfig(m.(*schema.ResourceData), d)
-	if err != nil {
-		return diag.Errorf(err.Error())
-	}
-
-	// Lock the mutex to avoid race conditions with other resources
-	redfishMutexKV.Lock(getRedfishServerEndpoint(d))
-	defer redfishMutexKV.Unlock(getRedfishServerEndpoint(d))
-
-	ethernetInterface, err := redfish.GetEthernetInterface(service.Client, d.Id())
-	if err != nil {
-		return diag.Errorf("Ethernet Interface doesn't exist: %s", err) //This error won't be triggered ever
-	}
-
-	// Get terraform schema data
-	var dhcpEnabled, useDnsServers, useDomainName, useGateway, useNTPServers, useStaticRoutes bool
-	if v, ok := d.GetOk("dhcp_enabled"); ok {
-		dhcpEnabled = v.(bool)
-	}
-	if v, ok := d.GetOk("use_dns_servers"); ok {
-		useDnsServers = v.(bool)
-	}
-	if v, ok := d.GetOk("use_domain_name"); ok {
-		useDomainName = v.(bool)
-	}
-	if v, ok := d.GetOk("use_gateway"); ok {
-		useGateway = v.(bool)
-	}
-	if v, ok := d.GetOk("use_ntp_servers"); ok {
-		useNTPServers = v.(bool)
-	}
-	if v, ok := d.GetOk("use_static_routes"); ok {
-		useStaticRoutes = v.(bool)
-	}
-
-	dhcpv4Configuration := redfish.DHCPv4Configuration{
-		DHCPEnabled:     dhcpEnabled,
-		UseDNSServers:   useDnsServers,
-		UseDomainName:   useDomainName,
-		UseGateway:      useGateway,
-		UseNTPServers:   useNTPServers,
-		UseStaticRoutes: useStaticRoutes,
-	}
-
-	ethernetInterface.DHCPv4 = dhcpv4Configuration
-	if err != nil {
-		return diag.Errorf("Couldn't update Ethernet Interface: %s", err)
-	}
-
-	return resourceRedfishEthernetInterfaceRead(ctx, d, m)
-}
-
-func resourceRedfishEthernetInterfaceDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-
-	d.SetId("")
 
 	return nil
 }

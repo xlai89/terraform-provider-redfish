@@ -192,3 +192,21 @@ func getRedfishServerEndpoint(resource *schema.ResourceData) string {
 	resourceServerConfig := resource.Get("redfish_server").([]interface{})
 	return resourceServerConfig[0].(map[string]interface{})["endpoint"].(string)
 }
+
+func getManager(managerID string, mgrs []*redfish.Manager) (*redfish.Manager, error) {
+	for _, v := range mgrs {
+		if v.ID == managerID {
+			return v, nil
+		}
+	}
+	return nil, fmt.Errorf("Manager with ID %s doesn't exist", managerID)
+}
+
+func getEthernetInterface(ethernetInterfaceID string, ethifs []*redfish.EthernetInterface) (*redfish.EthernetInterface, error) {
+	for _, v := range ethifs {
+		if v.ID == ethernetInterfaceID {
+			return v, nil
+		}
+	}
+	return nil, fmt.Errorf("EthernetInterface with ID %s doesn't exist", ethernetInterfaceID)
+}
