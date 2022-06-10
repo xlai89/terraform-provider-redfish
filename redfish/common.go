@@ -32,7 +32,8 @@ func getSystemResource(service *gofish.Service) (*redfish.ComputerSystem, error)
 // used to make any required API calls.
 func NewConfig(provider *schema.ResourceData, resource *schema.ResourceData) (*gofish.Service, error) {
 	//Get redfish connection details from resource block
-	var providerUser, providerPassword string
+	var providerUser, providerPassword, providerEndpoint string
+	var providerSslInsecure bool
 
 	if v, ok := provider.GetOk("user"); ok {
 		providerUser = v.(string)
@@ -40,12 +41,19 @@ func NewConfig(provider *schema.ResourceData, resource *schema.ResourceData) (*g
 	if v, ok := provider.GetOk("password"); ok {
 		providerPassword = v.(string)
 	}
+	if v, ok := provider.GetOk("endpoint"); ok {
+		providerEndpoint = v.(string)
+	}
+	if v, ok := provider.GetOk("ssl_insecure"); ok {
+		providerSslInsecure = v.(bool)
+	}
 
 	resourceServerConfig := resource.Get("redfish_server").([]interface{}) //It must be just one element
 
-	//Overwrite parameters (just user and password for client connection)
+	//Overwrite parameters
 	//Get redfish username at resource level over provider level
-	var redfishClientUser, redfishClientPass string
+	var redfishClientUser, redfishClientPass, redfishClientEndpoint string
+	var redfishClientSslInsecure bool
 	if len(resourceServerConfig[0].(map[string]interface{})["user"].(string)) > 0 {
 		redfishClientUser = resourceServerConfig[0].(map[string]interface{})["user"].(string)
 		log.Println("Using redfish user from resource")
@@ -61,17 +69,33 @@ func NewConfig(provider *schema.ResourceData, resource *schema.ResourceData) (*g
 		redfishClientPass = providerPassword
 		log.Println("Using redfish password from provider")
 	}
+	//Get redfish endpoint at resource level over provider level
+	if len(resourceServerConfig[0].(map[string]interface{})["endpoint"].(string)) > 0 {
+		redfishClientEndpoint = resourceServerConfig[0].(map[string]interface{})["endpoint"].(string)
+		log.Println("Using redfish endpoint from resource")
+	} else {
+		redfishClientEndpoint = providerEndpoint
+		log.Println("Using redfish endpoint from provider")
+	}
+	//Get redfish ssl_insecure at resource level over provider level
+	if resourceServerConfig[0].(map[string]interface{})["ssl_insecure"] != nil {
+		redfishClientSslInsecure = resourceServerConfig[0].(map[string]interface{})["ssl_insecure"].(bool)
+		log.Println("Using redfish ssl_insecure from resource")
+	} else {
+		redfishClientSslInsecure = providerSslInsecure
+		log.Println("Using redfish ssl_insecure from provider")
+	}
 	//If for some reason none user or pass has been set at provider/resource level, trow an error
 	if len(redfishClientUser) == 0 || len(redfishClientPass) == 0 {
 		return nil, fmt.Errorf("Error. Either Redfish client username or password has not been set. Please check your configuration")
 	}
 
 	clientConfig := gofish.ClientConfig{
-		Endpoint:  resourceServerConfig[0].(map[string]interface{})["endpoint"].(string),
+		Endpoint:  redfishClientEndpoint,
 		Username:  redfishClientUser,
 		Password:  redfishClientPass,
 		BasicAuth: true,
-		Insecure:  resourceServerConfig[0].(map[string]interface{})["ssl_insecure"].(bool),
+		Insecure:  redfishClientSslInsecure,
 	}
 	api, err := gofish.Connect(clientConfig)
 	if err != nil {

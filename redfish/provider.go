@@ -22,6 +22,16 @@ func Provider() *schema.Provider {
 				Optional:    true,
 				Description: "Default value. This field is the password related to the user given",
 			},
+			"endpoint": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Default value. Server BMC IP address or hostname",
+			},
+			"ssl_insecure": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Default value. This field indicates whether the SSL/TLS certificate must be verified or not",
+			},
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
@@ -32,6 +42,7 @@ func Provider() *schema.Provider {
 			"redfish_power":                 resourceRedFishPower(),
 			"redfish_simple_update":         resourceRedfishSimpleUpdate(),
 			"redfish_dell_idrac_attributes": resourceRedfishDellIdracAttributes(),
+			"redfish_ethernet_interface":    resourceRedfishEthernetInterface(),
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
