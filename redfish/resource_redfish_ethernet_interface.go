@@ -2,9 +2,11 @@ package redfish
 
 import (
 	"context"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/stmcginnis/gofish/redfish"
 )
 
@@ -145,6 +147,38 @@ func getResourceRedfishEthernetInterfaceSchema() map[string]*schema.Schema {
 				},
 			},
 		},
+		"ipv4_static_addresses": {
+			Type:        schema.TypeList,
+			Optional:    true,
+			Description: "The IPv4 static addresses assigned to this interface.",
+			Elem: &schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"address": {
+						Type:         schema.TypeString,
+						Description:  "The IPv4 address",
+						Optional:     true,
+						ValidateFunc: validation.StringMatch(regexp.MustCompile(`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`), "Not a valid ipv4 address."),
+					},
+					"address_origin": {
+						Type:        schema.TypeString,
+						Description: "This indicates how the address was determined.",
+						Computed:    true,
+					},
+					"gateway": {
+						Type:         schema.TypeString,
+						Description:  "The IPv4 gateway for this address.",
+						Optional:     true,
+						ValidateFunc: validation.StringMatch(regexp.MustCompile(`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`), "Not a valid ipv4 gateway."),
+					},
+					"subnet_mask": {
+						Type:         schema.TypeString,
+						Description:  "The IPv4 subnet mask.",
+						Optional:     true,
+						ValidateFunc: validation.StringMatch(regexp.MustCompile(`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`), "Not a valid ipv4 subnet mask."),
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -166,6 +200,8 @@ func resourceRedfishEthernetInterfaceCreate(ctx context.Context, d *schema.Resou
 	ethernetInterface.DHCPv4 = *createRedfishEthernetInterfaceDHCPv4Configuration(d)
 
 	ethernetInterface.DHCPv6 = *createRedfishEthernetInterfaceDHCPv6Configuration(d)
+
+	ethernetInterface.IPv4StaticAddresses = createRedfishEthernetInterfaceIPv4StaticAddresses(d)
 
 	d.SetId(ethernetInterface.ODataID)
 
@@ -189,6 +225,10 @@ func resourceRedfishEthernetInterfaceRead(ctx context.Context, d *schema.Resourc
 
 	if err := readRedfishEthernetInterfaceDHCPv6Configuration(ethernetInterface, d); err != nil {
 		return diag.Errorf("Couldn't read Ethernet Interface DHCPv6 configuration: %s", err)
+	}
+
+	if err := readRedfishEthernetInterfaceIPv4StaticAddresses(ethernetInterface, d); err != nil {
+		return diag.Errorf("Couldn't read Ethernet Interface IPv4 static addresses: %s", err)
 	}
 
 	return nil
@@ -215,6 +255,10 @@ func resourceRedfishEthernetInterfaceUpdate(ctx context.Context, d *schema.Resou
 
 	if d.HasChange("dhcpv6") {
 		ethernetInterface.DHCPv6 = *updateRedfishEthernetInterfaceDHCPv6Configuration(d)
+	}
+
+	if d.HasChange("ipv4_static_addresses") {
+		ethernetInterface.IPv4StaticAddresses = updateRedfishEthernetInterfaceIPv4StaticAddresses(d)
 	}
 
 	return resourceRedfishEthernetInterfaceRead(ctx, d, m)

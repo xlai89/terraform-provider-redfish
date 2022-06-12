@@ -392,3 +392,72 @@ func readRedfishEthernetInterfaceDHCPv6Configuration(ethernetInterface *redfish.
 func updateRedfishEthernetInterfaceDHCPv6Configuration(d *schema.ResourceData) *redfish.DHCPv6Configuration {
 	return createRedfishEthernetInterfaceDHCPv6Configuration(d)
 }
+
+// createRedfishEthernetInterfaceIPv4StaticAddresses turns schema values
+// for ethernet interface ipv4 static addresses into a list of redfish.IPv4Address
+func createRedfishEthernetInterfaceIPv4StaticAddresses(d *schema.ResourceData) []redfish.IPv4Address {
+
+	// Get terraform schema data
+	var ipv4StaticAddresses []interface{}
+	if v, ok := d.GetOk("ipv4_static_addresses"); ok {
+		ipv4StaticAddresses = v.([]interface{})
+	}
+
+	if len(ipv4StaticAddresses) > 1 || ipv4StaticAddresses[0] == nil {
+		return nil
+	}
+
+	// Construct a list of redfish.IPv4Address for return
+	var ipv4StaticAddressList []redfish.IPv4Address
+	for _, v := range ipv4StaticAddresses {
+		val := v.(map[string]interface{})
+
+		var ipv4StaticAddress redfish.IPv4Address
+
+		if v, ok := val["address"]; ok {
+			ipv4StaticAddress.Address = v.(string)
+		}
+		if v, ok := val["address_origin"]; ok {
+			ipv4StaticAddress.AddressOrigin = v.(redfish.IPv4AddressOrigin)
+		}
+		if v, ok := val["gateway"]; ok {
+			ipv4StaticAddress.Gateway = v.(string)
+		}
+		if v, ok := val["subnet_mask"]; ok {
+			ipv4StaticAddress.SubnetMask = v.(string)
+		}
+
+		ipv4StaticAddressList = append(ipv4StaticAddressList, ipv4StaticAddress)
+	}
+
+	return ipv4StaticAddressList
+}
+
+// readRedfishEthernetInterfaceIPv4StaticAddresses takes IPv4 static addresses
+// of the ethernet interface from the redfish client and save them into the terraform schema
+func readRedfishEthernetInterfaceIPv4StaticAddresses(ethernetInterface *redfish.EthernetInterface, d *schema.ResourceData) error {
+
+	var ipv4StaticAddresses []interface{}
+
+	for _, v := range ethernetInterface.IPv4StaticAddresses {
+		var ipv4StaticAddress map[string]interface{}
+
+		ipv4StaticAddress["address"] = v.Address
+		ipv4StaticAddress["address_origin"] = v.AddressOrigin
+		ipv4StaticAddress["gateway"] = v.Gateway
+		ipv4StaticAddress["subnet_mask"] = v.SubnetMask
+
+		ipv4StaticAddresses = append(ipv4StaticAddresses, ipv4StaticAddress)
+	}
+
+	// Set terraform schema data
+	if err := d.Set("ipv4_static_addresses", ipv4StaticAddresses); err != nil {
+		return fmt.Errorf("[CUSTOM] error setting %s: %v\n", "ipv4_static_addresses", err)
+	}
+
+	return nil
+}
+
+func updateRedfishEthernetInterfaceIPv4StaticAddresses(d *schema.ResourceData) []redfish.IPv4Address {
+	return createRedfishEthernetInterfaceIPv4StaticAddresses(d)
+}
