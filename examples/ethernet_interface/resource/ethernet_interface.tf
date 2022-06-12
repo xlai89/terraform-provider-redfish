@@ -15,5 +15,11 @@ provider "redfish" {
 }
 
 resource "redfish_ethernet_interface" "ethernet_interface" {
-  dhcp_enabled = false
+  dhcpv4 {
+    dhcp_enabled = false
+  }
+
+  dhcpv6 {
+    operating_mode = false
+  }
 }

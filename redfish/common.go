@@ -193,6 +193,8 @@ func getRedfishServerEndpoint(resource *schema.ResourceData) string {
 	return resourceServerConfig[0].(map[string]interface{})["endpoint"].(string)
 }
 
+// getManager returns the redfish manager instance in a given manager list
+// according to the given manager ID
 func getManager(managerID string, mgrs []*redfish.Manager) (*redfish.Manager, error) {
 	for _, v := range mgrs {
 		if v.ID == managerID {
@@ -202,6 +204,8 @@ func getManager(managerID string, mgrs []*redfish.Manager) (*redfish.Manager, er
 	return nil, fmt.Errorf("Manager with ID %s doesn't exist", managerID)
 }
 
+// getEthernetInterface return the redfish ethernet interface instance
+// in a given ethernet interface list according to the given ethernet interface ID
 func getEthernetInterface(ethernetInterfaceID string, ethifs []*redfish.EthernetInterface) (*redfish.EthernetInterface, error) {
 	for _, v := range ethifs {
 		if v.ID == ethernetInterfaceID {
@@ -209,4 +213,182 @@ func getEthernetInterface(ethernetInterfaceID string, ethifs []*redfish.Ethernet
 		}
 	}
 	return nil, fmt.Errorf("EthernetInterface with ID %s doesn't exist", ethernetInterfaceID)
+}
+
+// getRedfishEthernetInterface return the redfish ethernet interface instance
+// according to the manager_id and ethernet_interface_id in the schema
+func getRedfishEthernetInterface(service *gofish.Service, d *schema.ResourceData) (*redfish.EthernetInterface, error) {
+
+	// Get manager id and ethernet interface id from schema
+	var managerID, ethernetInterfaceID string
+	if v, ok := d.GetOk("manager_id"); ok {
+		managerID = v.(string)
+	}
+	if v, ok := d.GetOk("ethernet_interface_id"); ok {
+		ethernetInterfaceID = v.(string)
+	}
+
+	// Get manager list and then a specific manager
+	managerCollection, err := service.Managers()
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't retrieve managers from redfish API: %s", err)
+	}
+	manager, err := getManager(managerID, managerCollection)
+	if err != nil {
+		return nil, fmt.Errorf("Manager selected doesn't exist: %s", err)
+	}
+
+	// Get ethernet interface list and then a specific ethernet interface
+	ethernetInterfaceCollection, err := manager.EthernetInterfaces()
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't retrieve ethernet interface collection from redfish API: %s", err)
+	}
+	ethernetInterface, err := getEthernetInterface(ethernetInterfaceID, ethernetInterfaceCollection)
+	if err != nil {
+		return nil, fmt.Errorf("Ethernet Interface selected doesn't exist: %s", err)
+	}
+
+	return ethernetInterface, nil
+}
+
+// createRedfishEthernetInterfaceDHCPv4Configuration turns schema values
+// for ethernet interface DHCPv4 configuration into redfish.DHCPv4Configuration
+func createRedfishEthernetInterfaceDHCPv4Configuration(d *schema.ResourceData) *redfish.DHCPv4Configuration {
+
+	var dhcpv4ConfigList []interface{}
+	if v, ok := d.GetOk("dhcpv4"); ok {
+		dhcpv4ConfigList = v.([]interface{})
+	}
+
+	if len(dhcpv4ConfigList) > 1 || dhcpv4ConfigList[0] == nil {
+		return nil
+	}
+
+	dhcpv4Config := dhcpv4ConfigList[0].(map[string]interface{})
+
+	// Get terraform schema data
+	var dhcpEnabled, useDnsServers, useDomainName, useGateway, useNTPServers, useStaticRoutes bool
+	if v, ok := dhcpv4Config["dhcp_enabled"]; ok {
+		dhcpEnabled = v.(bool)
+	}
+	if v, ok := dhcpv4Config["use_dns_servers"]; ok {
+		useDnsServers = v.(bool)
+	}
+	if v, ok := dhcpv4Config["use_domain_name"]; ok {
+		useDomainName = v.(bool)
+	}
+	if v, ok := dhcpv4Config["use_gateway"]; ok {
+		useGateway = v.(bool)
+	}
+	if v, ok := dhcpv4Config["use_ntp_servers"]; ok {
+		useNTPServers = v.(bool)
+	}
+	if v, ok := dhcpv4Config["use_static_routes"]; ok {
+		useStaticRoutes = v.(bool)
+	}
+
+	dhcpv4Configuration := redfish.DHCPv4Configuration{
+		DHCPEnabled:     dhcpEnabled,
+		UseDNSServers:   useDnsServers,
+		UseDomainName:   useDomainName,
+		UseGateway:      useGateway,
+		UseNTPServers:   useNTPServers,
+		UseStaticRoutes: useStaticRoutes,
+	}
+
+	return &dhcpv4Configuration
+}
+
+// readRedfishEthernetInterfaceDHCPv4Configuration takes DHCPv4 configurations
+// of the ethernet interface from the redfish client and save them into the terraform schema
+func readRedfishEthernetInterfaceDHCPv4Configuration(ethernetInterface *redfish.EthernetInterface, d *schema.ResourceData) error {
+
+	dhcpv4Config := map[string]interface{}{}
+
+	dhcpv4Config["dhcp_enabled"] = ethernetInterface.DHCPv4.DHCPEnabled
+	dhcpv4Config["use_dns_servers"] = ethernetInterface.DHCPv4.UseDNSServers
+	dhcpv4Config["use_domain_name"] = ethernetInterface.DHCPv4.UseDomainName
+	dhcpv4Config["use_gateway"] = ethernetInterface.DHCPv4.UseGateway
+	dhcpv4Config["use_ntp_servers"] = ethernetInterface.DHCPv4.UseNTPServers
+	dhcpv4Config["use_static_routes"] = ethernetInterface.DHCPv4.UseStaticRoutes
+
+	// Set terraform schema data
+	if err := d.Set("dhcpv4", dhcpv4Config); err != nil {
+		return fmt.Errorf("[CUSTOM] error setting %s: %v\n", "dhcpv4", err)
+	}
+
+	return nil
+}
+
+func updateRedfishEthernetInterfaceDHCPv4Configuration(d *schema.ResourceData) *redfish.DHCPv4Configuration {
+	return createRedfishEthernetInterfaceDHCPv4Configuration(d)
+}
+
+// createRedfishEthernetInterfaceDHCPv6Configuration turns schema values
+// for ethernet interface DHCPv4 configuration into redfish.DHCPv4Configuration
+func createRedfishEthernetInterfaceDHCPv6Configuration(d *schema.ResourceData) *redfish.DHCPv6Configuration {
+
+	var dhcpv6ConfigList []interface{}
+	if v, ok := d.GetOk("dhcpv6"); ok {
+		dhcpv6ConfigList = v.([]interface{})
+	}
+
+	if len(dhcpv6ConfigList) > 1 || dhcpv6ConfigList[0] == nil {
+		return nil
+	}
+
+	dhcpv6Config := dhcpv6ConfigList[0].(map[string]interface{})
+
+	// Get terraform schema data
+	var operatingMode redfish.DHCPv6OperatingMode
+	var useDnsServers, useDomainName, useNTPServers, useRapidCommit bool
+	if v, ok := dhcpv6Config["operating_mode"]; ok {
+		operatingMode = v.(redfish.DHCPv6OperatingMode)
+	}
+	if v, ok := dhcpv6Config["use_dns_servers"]; ok {
+		useDnsServers = v.(bool)
+	}
+	if v, ok := dhcpv6Config["use_domain_name"]; ok {
+		useDomainName = v.(bool)
+	}
+	if v, ok := dhcpv6Config["use_ntp_servers"]; ok {
+		useNTPServers = v.(bool)
+	}
+	if v, ok := dhcpv6Config["use_rapid_commit"]; ok {
+		useRapidCommit = v.(bool)
+	}
+
+	dhcpv6Configuration := redfish.DHCPv6Configuration{
+		OperatingMode:  operatingMode,
+		UseDNSServers:  useDnsServers,
+		UseDomainName:  useDomainName,
+		UseNTPServers:  useNTPServers,
+		UseRapidCommit: useRapidCommit,
+	}
+
+	return &dhcpv6Configuration
+}
+
+// readRedfishEthernetInterfaceDHCPv6Configuration takes DHCPv6 configurations
+// of the ethernet interface from the redfish client and save them into the terraform schema
+func readRedfishEthernetInterfaceDHCPv6Configuration(ethernetInterface *redfish.EthernetInterface, d *schema.ResourceData) error {
+
+	dhcpv6Config := map[string]interface{}{}
+
+	dhcpv6Config["operating_mode"] = ethernetInterface.DHCPv6.OperatingMode
+	dhcpv6Config["use_dns_servers"] = ethernetInterface.DHCPv6.UseDNSServers
+	dhcpv6Config["use_domain_name"] = ethernetInterface.DHCPv6.UseDomainName
+	dhcpv6Config["use_ntp_servers"] = ethernetInterface.DHCPv6.UseNTPServers
+	dhcpv6Config["use_rapid_commit"] = ethernetInterface.DHCPv6.UseRapidCommit
+
+	// Set terraform schema data
+	if err := d.Set("dhcpv6", dhcpv6Config); err != nil {
+		return fmt.Errorf("[CUSTOM] error setting %s: %v\n", "dhcpv6", err)
+	}
+
+	return nil
+}
+
+func updateRedfishEthernetInterfaceDHCPv6Configuration(d *schema.ResourceData) *redfish.DHCPv6Configuration {
+	return createRedfishEthernetInterfaceDHCPv6Configuration(d)
 }

@@ -58,40 +58,88 @@ func getDataSourceRedfishEthernetInterfaceSchema() map[string]*schema.Schema {
 			Required:    true,
 			Default:     "1",
 		},
-		"dhcp_enabled": {
-			Type:        schema.TypeBool,
-			Description: "An indication of whether DHCP v4 is enabled on this Ethernet interface.",
+		"dhcpv4_config": {
+			Type:        schema.TypeList,
+			MinItems:    1,
+			MaxItems:    1,
 			Optional:    true,
+			Description: "DHCPv4 configuration for this interface.",
+			Elem: &schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"dhcp_enabled": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether DHCP v4 is enabled on this Ethernet interface.",
+						Optional:    true,
+					},
+					// "fallback_address": {
+					// 	Type:        schema.TypeList,
+					// 	Description: "DHCPv4 fallback address method for this interface.",
+					// 	Required:    false,
+					// },
+					"use_dns_servers": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether this interface uses DHCP v4-supplied DNS servers.",
+						Optional:    true,
+					},
+					"use_domain_name": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether this interface uses a DHCP v4-supplied domain name.",
+						Optional:    true,
+					},
+					"use_gateway": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether this interface uses a DHCP v4-supplied gateway.",
+						Optional:    true,
+					},
+					"use_ntp_servers": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether the interface uses DHCP v4-supplied NTP servers.",
+						Optional:    true,
+					},
+					"use_static_routes": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether the interface uses DHCP v4-supplied static routes.",
+						Optional:    true,
+					},
+				},
+			},
 		},
-		// "fallback_address": {
-		// 	Type:        schema.TypeList,
-		// 	Description: "DHCPv4 fallback address method for this interface.",
-		// 	Required:    false,
-		// },
-		"use_dns_servers": {
-			Type:        schema.TypeBool,
-			Description: "An indication of whether this interface uses DHCP v4-supplied DNS servers.",
+		"dhcpv6_config": {
+			Type:        schema.TypeList,
+			MinItems:    1,
+			MaxItems:    1,
 			Optional:    true,
-		},
-		"use_domain_name": {
-			Type:        schema.TypeBool,
-			Description: "An indication of whether this interface uses a DHCP v4-supplied domain name.",
-			Optional:    true,
-		},
-		"use_gateway": {
-			Type:        schema.TypeBool,
-			Description: "An indication of whether this interface uses a DHCP v4-supplied gateway.",
-			Optional:    true,
-		},
-		"use_ntp_servers": {
-			Type:        schema.TypeBool,
-			Description: "An indication of whether the interface uses DHCP v4-supplied NTP servers.",
-			Optional:    true,
-		},
-		"use_static_routes": {
-			Type:        schema.TypeBool,
-			Description: "An indication of whether the interface uses DHCP v4-supplied static routes.",
-			Optional:    true,
+			Description: "DHCPv6 configuration for this interface.",
+			Elem: &schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"operating_mode": {
+						Type:         schema.TypeString,
+						Description:  "Determines the DHCPv6 operating mode for this interface.",
+						Optional:     true,
+						ExactlyOneOf: []string{"Stateful", "Stateless", "Disabled", "Enabled"},
+					},
+					"use_dns_servers": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether the interface uses DHCP v6-supplied DNS servers.",
+						Optional:    true,
+					},
+					"use_domain_name": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether this interface uses a DHCP v6-supplied domain name.",
+						Optional:    true,
+					},
+					"use_ntp_servers": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether the interface uses DHCP v6-supplied NTP servers.",
+						Optional:    true,
+					},
+					"use_rapid_commit": {
+						Type:        schema.TypeBool,
+						Description: "An indication of whether the interface uses DHCP v6 rapid commit mode for stateful mode address assignments.  Do not enable this option in networks where more than one DHCP v6 server is configured to provide address assignments.",
+						Optional:    true,
+					},
+				},
+			},
 		},
 	}
 }
@@ -102,33 +150,9 @@ func dataSourceRedfishEthernetInterfaceRead(ctx context.Context, d *schema.Resou
 		return diag.Errorf(err.Error())
 	}
 
-	// Get manager id and ethernet interface id from schema
-	var managerID, ethernetInterfaceID string
-	if v, ok := d.GetOk("manager_id"); ok {
-		managerID = v.(string)
-	}
-	if v, ok := d.GetOk("ethernet_interface_id"); ok {
-		ethernetInterfaceID = v.(string)
-	}
-
-	// Get manager list and then a specific manager
-	managerCollection, err := service.Managers()
+	ethernetInterface, err := getRedfishEthernetInterface(service, d)
 	if err != nil {
-		return diag.Errorf("Couldn't retrieve managers from redfish API: %s", err)
-	}
-	manager, err := getManager(managerID, managerCollection)
-	if err != nil {
-		return diag.Errorf("Manager selected doesn't exist: %s", err)
-	}
-
-	// Get ethernet interface list and then a specific ethernet interface
-	ethernetInterfaceCollection, err := manager.EthernetInterfaces()
-	if err != nil {
-		return diag.Errorf("Couldn't retrieve ethernet interface collection from redfish API: %s", err)
-	}
-	ethernetInterface, err := getEthernetInterface(ethernetInterfaceID, ethernetInterfaceCollection)
-	if err != nil {
-		return diag.Errorf("Ethernet Interface selected doesn't exist: %s", err)
+		return diag.Errorf("Couldn't get Ethernet Interface: %s", err)
 	}
 
 	d.SetId(ethernetInterface.ODataID)
@@ -138,24 +162,12 @@ func dataSourceRedfishEthernetInterfaceRead(ctx context.Context, d *schema.Resou
 		return diag.Errorf("[CUSTOM] error setting %s: %v\n", "dhcp_enabled", err)
 	}
 
-	if err := d.Set("use_dns_servers", ethernetInterface.DHCPv4.UseDNSServers); err != nil {
-		return diag.Errorf("[CUSTOM] error setting %s: %v\n", "use_dns_servers", err)
+	if err := readRedfishEthernetInterfaceDHCPv4Configuration(ethernetInterface, d); err != nil {
+		return diag.Errorf("Couldn't read Ethernet Interface DHCPv4 configuration: %s", err)
 	}
 
-	if err := d.Set("use_domain_name", ethernetInterface.DHCPv4.UseDomainName); err != nil {
-		return diag.Errorf("[CUSTOM] error setting %s: %v\n", "use_domain_name", err)
-	}
-
-	if err := d.Set("use_gateway", ethernetInterface.DHCPv4.UseGateway); err != nil {
-		return diag.Errorf("[CUSTOM] error setting %s: %v\n", "use_gateway", err)
-	}
-
-	if err := d.Set("use_ntp_servers", ethernetInterface.DHCPv4.UseNTPServers); err != nil {
-		return diag.Errorf("[CUSTOM] error setting %s: %v\n", "use_ntp_servers", err)
-	}
-
-	if err := d.Set("use_static_routes", ethernetInterface.DHCPv4.UseStaticRoutes); err != nil {
-		return diag.Errorf("[CUSTOM] error setting %s: %v\n", "use_static_routes", err)
+	if err := readRedfishEthernetInterfaceDHCPv6Configuration(ethernetInterface, d); err != nil {
+		return diag.Errorf("Couldn't read Ethernet Interface DHCPv6 configuration: %s", err)
 	}
 
 	return nil
